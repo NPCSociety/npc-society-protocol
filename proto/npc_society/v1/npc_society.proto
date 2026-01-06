@@ -61,6 +61,12 @@ message Hello {
   string server_id = 3;
   // Minecraft server version (e.g., "1.20.4")
   string minecraft_version = 4;
+  // Whether Simple Voice Chat is installed and enabled (v1.1+)
+  bool voice_available = 5;
+  // Optional display name for the server (v1.1+)
+  string server_name = 6;
+  // Daemon deployment mode: "embedded" or "external" (v1.1+, diagnostics only)
+  string daemon_mode = 7;
 }
 
 // WorldTick is sent at 5-20Hz containing snapshots of nearby entities.
@@ -117,12 +123,24 @@ message VoicePcmFrame {
   string npc_id = 1;
   // UUID of the player speaking
   string player_uuid = 2;
-  // Raw PCM audio data (16-bit signed, mono, 48kHz)
+  // Raw PCM audio data (16-bit signed, mono, 48kHz by default)
   bytes pcm_data = 3;
   // Sequence number for ordering
   uint64 sequence = 4;
   // Unix timestamp in milliseconds
   int64 timestamp_ms = 5;
+  // Sample rate in Hz (v1.1+, default 48000 if not set)
+  int32 sample_rate_hz = 6;
+  // Audio format (v1.1+, default PCM_FORMAT_S16LE if not set)
+  PcmFormat format = 7;
+}
+
+// PCM audio format enumeration.
+enum PcmFormat {
+  // Default: treat as PCM_FORMAT_S16LE for backwards compatibility
+  PCM_FORMAT_UNSPECIFIED = 0;
+  // 16-bit signed little-endian PCM
+  PCM_FORMAT_S16LE = 1;
 }
 
 // ActionResult reports the outcome of an ActionDirective.
@@ -143,6 +161,10 @@ message ActionResult {
     AttackResult attack_result = 13;
     InteractResult interact_result = 14;
     InventoryResult inventory_result = 15;
+    // Environment awareness results (v1.1+)
+    ScanBlocksResult scan_blocks_result = 16;
+    RaycastLookResult raycast_look_result = 17;
+    DepositToChestResult deposit_to_chest_result = 18;
   }
 }
 
@@ -168,6 +190,10 @@ message ActionDirective {
     InventoryAction inventory = 15;
     LookAction look = 16;
     StopAction stop = 17;
+    // Environment awareness actions (v1.1+)
+    ScanBlocksAction scan_blocks = 18;
+    RaycastLookAction raycast_look = 19;
+    DepositToChestAction deposit_to_chest = 20;
   }
 }
 
@@ -181,6 +207,14 @@ message SpeakDirective {
   string emotion = 3;
   // Duration to display subtitle in milliseconds
   int32 duration_ms = 4;
+  // Unique ID for correlating with AudioChunk stream (v1.1+)
+  string directive_id = 5;
+  // TTS voice preset name/id (v1.1+, optional)
+  string voice_id = 6;
+  // Volume level 0.0-1.0 (v1.1+, optional, default 1.0)
+  float volume = 7;
+  // Audio stream ID - if set, must match AudioChunk.stream_id (v1.1+)
+  string stream_id = 8;
 }
 
 // AudioChunk contains TTS audio for Simple Voice Chat playback.
@@ -195,6 +229,8 @@ message AudioChunk {
   uint64 sequence = 4;
   // Whether this is the final chunk in the stream
   bool is_final = 5;
+  // Optional directive_id for correlation with SpeakDirective (v1.1+)
+  string directive_id = 6;
 }
 
 // =============================================================================
@@ -430,6 +466,42 @@ message StopAction {
 }
 
 // =============================================================================
+// Environment Awareness Actions (v1.1+)
+// =============================================================================
+
+// ScanBlocksAction scans for specific block types within a radius.
+// Used for mining perception without LLM involvement.
+message ScanBlocksAction {
+  // Center position for the scan (must be in loaded chunk)
+  BlockPosition center = 1;
+  // Scan radius in blocks (capped by plugin config)
+  int32 radius = 2;
+  // Block types to search for (e.g., ["minecraft:diamond_ore", "minecraft:deepslate_diamond_ore"])
+  repeated string block_types = 3;
+  // Maximum number of results to return (hard cap, e.g., 25)
+  int32 max_results = 4;
+}
+
+// RaycastLookAction performs a raycast in the NPC's look direction.
+// Used to determine what block the NPC is looking at.
+message RaycastLookAction {
+  // Maximum raycast distance in blocks (e.g., 6-32)
+  float max_distance = 1;
+  // Whether to include fluid blocks in the raycast
+  bool include_fluids = 2;
+}
+
+// DepositToChestAction deposits items from NPC inventory to a chest.
+message DepositToChestAction {
+  // Position of the chest to deposit into
+  BlockPosition chest_position = 1;
+  // Item types to deposit (empty = deposit all allowed items)
+  repeated string item_types = 2;
+  // Maximum number of items to deposit
+  int32 max_items = 3;
+}
+
+// =============================================================================
 // Action Result Types
 // =============================================================================
 
@@ -474,3 +546,38 @@ message ItemStack {
   int32 quantity = 2;
 }
 
+// =============================================================================
+// Environment Awareness Results (v1.1+)
+// =============================================================================
+
+// ScanBlocksResult contains blocks found by a ScanBlocksAction.
+message ScanBlocksResult {
+  // Matching blocks found (sorted by distance from center)
+  repeated BlockMatch matches = 1;
+}
+
+// BlockMatch represents a single block found by scanning.
+message BlockMatch {
+  // Position of the found block
+  BlockPosition position = 1;
+  // Block type (e.g., "minecraft:diamond_ore")
+  string block_type = 2;
+}
+
+// RaycastLookResult contains the result of a raycast.
+message RaycastLookResult {
+  // Whether the raycast hit a block
+  bool hit = 1;
+  // Position of the hit block (only set if hit is true)
+  BlockPosition hit_position = 2;
+  // Type of the hit block (only set if hit is true)
+  string block_type = 3;
+  // Distance to the hit block
+  float distance = 4;
+}
+
+// DepositToChestResult contains the items deposited to a chest.
+message DepositToChestResult {
+  // Items that were successfully deposited
+  repeated ItemStack deposited = 1;
+}
