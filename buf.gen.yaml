@@ -1,0 +1,31 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: java_multiple_files
+      value: true
+    - file_option: java_package_prefix
+      value: com.npcsociety.protocol
+plugins:
+  # Java protobuf messages
+  - remote: buf.build/protocolbuffers/java
+    out: gen/java
+  
+  # Java gRPC stubs
+  - remote: buf.build/grpc/java
+    out: gen/java
+  
+  # Rust protobuf messages (prost)
+  - remote: buf.build/community/neoeinstein-prost
+    out: gen/rust/src
+    opt:
+      - compile_well_known_types
+      - extern_path=.google.protobuf=::pbjson_types
+  
+  # Rust gRPC stubs (tonic)
+  - remote: buf.build/community/neoeinstein-tonic
+    out: gen/rust/src
+    opt:
+      - compile_well_known_types
+      - extern_path=.google.protobuf=::pbjson_types
+

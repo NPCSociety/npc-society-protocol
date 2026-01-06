@@ -1,0 +1,476 @@
+// Copyright 2024 NPC Society Authors
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package npc_society.v1;
+
+option java_multiple_files = true;
+option java_package = "com.npcsociety.protocol.v1";
+option java_outer_classname = "NpcSocietyProto";
+
+// =============================================================================
+// Service Definition
+// =============================================================================
+
+// NpcSocietyService handles bidirectional streaming between the Paper plugin
+// and the daemon. The plugin acts as client, daemon acts as server.
+service NpcSocietyService {
+  // Connect establishes a persistent bidirectional stream.
+  // Plugin sends observations and action results.
+  // Daemon sends directives and audio chunks.
+  rpc Connect(stream ClientMessage) returns (stream ServerMessage);
+}
+
+// =============================================================================
+// Envelope Messages
+// =============================================================================
+
+// ClientMessage wraps all messages sent from plugin to daemon.
+message ClientMessage {
+  oneof message {
+    Hello hello = 1;
+    WorldTick world_tick = 2;
+    ChatObservation chat_observation = 3;
+    EventObservation event_observation = 4;
+    VoicePcmFrame voice_pcm_frame = 5;
+    ActionResult action_result = 6;
+  }
+}
+
+// ServerMessage wraps all messages sent from daemon to plugin.
+message ServerMessage {
+  oneof message {
+    ActionDirective action_directive = 1;
+    SpeakDirective speak_directive = 2;
+    AudioChunk audio_chunk = 3;
+  }
+}
+
+// =============================================================================
+// Client Messages (Plugin -> Daemon)
+// =============================================================================
+
+// Hello is the first message sent after connection, used for handshake.
+message Hello {
+  // Semantic version of the plugin (e.g., "1.0.0")
+  string plugin_version = 1;
+  // Semantic version of the protocol (e.g., "1")
+  string protocol_version = 2;
+  // Minecraft server identifier (for multi-server setups)
+  string server_id = 3;
+  // Minecraft server version (e.g., "1.20.4")
+  string minecraft_version = 4;
+}
+
+// WorldTick is sent at 5-20Hz containing snapshots of nearby entities.
+// Only entities within the configured radius of any NPC are included.
+message WorldTick {
+  // Monotonic tick counter from Minecraft server
+  int64 server_tick = 1;
+  // Unix timestamp in milliseconds
+  int64 timestamp_ms = 2;
+  // Snapshots of all managed NPCs
+  repeated NpcSnapshot npcs = 3;
+  // Snapshots of players near any NPC
+  repeated PlayerSnapshot nearby_players = 4;
+  // Snapshots of other entities near any NPC (mobs, etc.)
+  repeated EntitySnapshot nearby_entities = 5;
+}
+
+// ChatObservation is sent when a player chats near an NPC.
+message ChatObservation {
+  // Which NPC observed this chat
+  string npc_id = 1;
+  // UUID of the player who sent the message
+  string player_uuid = 2;
+  // Player display name
+  string player_name = 3;
+  // The chat message content
+  string message = 4;
+  // Unix timestamp in milliseconds
+  int64 timestamp_ms = 5;
+  // Distance from NPC to player when message was sent
+  float distance = 6;
+}
+
+// EventObservation is sent when a game event occurs near an NPC.
+message EventObservation {
+  // Which NPC observed this event
+  string npc_id = 1;
+  // Unix timestamp in milliseconds
+  int64 timestamp_ms = 2;
+  // The type of event
+  EventType event_type = 3;
+  // Event-specific payload
+  oneof payload {
+    CombatEvent combat = 10;
+    BlockEvent block = 11;
+    ItemEvent item = 12;
+    ProximityEvent proximity = 13;
+  }
+}
+
+// VoicePcmFrame contains raw PCM audio from Simple Voice Chat.
+message VoicePcmFrame {
+  // Which NPC should receive this audio
+  string npc_id = 1;
+  // UUID of the player speaking
+  string player_uuid = 2;
+  // Raw PCM audio data (16-bit signed, mono, 48kHz)
+  bytes pcm_data = 3;
+  // Sequence number for ordering
+  uint64 sequence = 4;
+  // Unix timestamp in milliseconds
+  int64 timestamp_ms = 5;
+}
+
+// ActionResult reports the outcome of an ActionDirective.
+message ActionResult {
+  // The directive_id from the original ActionDirective
+  string directive_id = 1;
+  // Which NPC executed the action
+  string npc_id = 2;
+  // Whether the action completed successfully
+  bool success = 3;
+  // Error message if success is false
+  string error_message = 4;
+  // Action-specific result data
+  oneof result {
+    MoveResult move_result = 10;
+    BreakBlockResult break_block_result = 11;
+    PlaceBlockResult place_block_result = 12;
+    AttackResult attack_result = 13;
+    InteractResult interact_result = 14;
+    InventoryResult inventory_result = 15;
+  }
+}
+
+// =============================================================================
+// Server Messages (Daemon -> Plugin)
+// =============================================================================
+
+// ActionDirective commands an NPC to perform an action.
+message ActionDirective {
+  // Unique ID for correlating with ActionResult
+  string directive_id = 1;
+  // Which NPC should execute this action
+  string npc_id = 2;
+  // Priority level (higher = more urgent)
+  int32 priority = 3;
+  // The action to perform
+  oneof action {
+    MoveAction move = 10;
+    BreakBlockAction break_block = 11;
+    PlaceBlockAction place_block = 12;
+    AttackAction attack = 13;
+    InteractAction interact = 14;
+    InventoryAction inventory = 15;
+    LookAction look = 16;
+    StopAction stop = 17;
+  }
+}
+
+// SpeakDirective tells an NPC to speak (for subtitles/logging).
+message SpeakDirective {
+  // Which NPC should speak
+  string npc_id = 1;
+  // The text to display as subtitle
+  string text = 2;
+  // Optional emotion/tone hint for display
+  string emotion = 3;
+  // Duration to display subtitle in milliseconds
+  int32 duration_ms = 4;
+}
+
+// AudioChunk contains TTS audio for Simple Voice Chat playback.
+message AudioChunk {
+  // Which NPC should play this audio
+  string npc_id = 1;
+  // Unique ID for this audio stream (multiple chunks per stream)
+  string stream_id = 2;
+  // Raw PCM audio data (16-bit signed, mono, 48kHz)
+  bytes pcm_data = 3;
+  // Sequence number for ordering
+  uint64 sequence = 4;
+  // Whether this is the final chunk in the stream
+  bool is_final = 5;
+}
+
+// =============================================================================
+// Snapshot Types
+// =============================================================================
+
+// NpcSnapshot represents the current state of a managed NPC.
+message NpcSnapshot {
+  // Stable config-defined NPC identifier
+  string npc_id = 1;
+  // Minecraft entity UUID (changes on respawn)
+  string entity_uuid = 2;
+  // Current position and orientation
+  Position position = 3;
+  // Health normalized to 0.0-1.0
+  float health_norm = 4;
+  // Whether the NPC is currently in combat
+  bool in_combat = 5;
+  // Current hunger level normalized to 0.0-1.0
+  float hunger_norm = 6;
+  // Item in main hand (empty string if none)
+  string held_item = 7;
+  // Current activity/state description
+  string current_activity = 8;
+}
+
+// PlayerSnapshot represents a player near an NPC.
+message PlayerSnapshot {
+  // Minecraft player UUID
+  string player_uuid = 1;
+  // Player display name
+  string player_name = 2;
+  // Current position and orientation
+  Position position = 3;
+  // Health normalized to 0.0-1.0
+  float health_norm = 4;
+  // Item in main hand (empty string if none)
+  string held_item = 5;
+  // Whether player is sneaking
+  bool sneaking = 6;
+  // Whether player is sprinting
+  bool sprinting = 7;
+  // Game mode (survival, creative, adventure, spectator)
+  string game_mode = 8;
+}
+
+// EntitySnapshot represents a non-player entity near an NPC.
+message EntitySnapshot {
+  // Minecraft entity UUID
+  string entity_uuid = 1;
+  // Entity type (e.g., "minecraft:zombie")
+  string entity_type = 2;
+  // Current position
+  Position position = 3;
+  // Health normalized to 0.0-1.0 (if applicable)
+  float health_norm = 4;
+  // Custom name if any
+  string custom_name = 5;
+}
+
+// Position represents a location and orientation in the world.
+message Position {
+  // World name
+  string world = 1;
+  // X coordinate
+  double x = 2;
+  // Y coordinate
+  double y = 3;
+  // Z coordinate
+  double z = 4;
+  // Yaw (horizontal rotation, 0-360)
+  float yaw = 5;
+  // Pitch (vertical rotation, -90 to 90)
+  float pitch = 6;
+}
+
+// BlockPosition represents a block location (integer coordinates).
+message BlockPosition {
+  string world = 1;
+  int32 x = 2;
+  int32 y = 3;
+  int32 z = 4;
+}
+
+// =============================================================================
+// Event Types
+// =============================================================================
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_COMBAT = 1;
+  EVENT_TYPE_BLOCK = 2;
+  EVENT_TYPE_ITEM = 3;
+  EVENT_TYPE_PROXIMITY = 4;
+}
+
+message CombatEvent {
+  // UUID of the attacker
+  string attacker_uuid = 1;
+  // UUID of the target
+  string target_uuid = 2;
+  // Damage dealt (normalized)
+  float damage_norm = 3;
+  // Whether the target died
+  bool target_killed = 4;
+  // Weapon used (empty if none)
+  string weapon = 5;
+}
+
+message BlockEvent {
+  // Type of block event
+  BlockEventType event_type = 1;
+  // Position of the block
+  BlockPosition position = 2;
+  // Block type (e.g., "minecraft:diamond_ore")
+  string block_type = 3;
+  // UUID of the entity that caused the event (if any)
+  string caused_by_uuid = 4;
+}
+
+enum BlockEventType {
+  BLOCK_EVENT_TYPE_UNSPECIFIED = 0;
+  BLOCK_EVENT_TYPE_BREAK = 1;
+  BLOCK_EVENT_TYPE_PLACE = 2;
+  BLOCK_EVENT_TYPE_INTERACT = 3;
+}
+
+message ItemEvent {
+  // Type of item event
+  ItemEventType event_type = 1;
+  // Item involved
+  string item_type = 2;
+  // Quantity
+  int32 quantity = 3;
+  // UUID of the entity involved
+  string entity_uuid = 4;
+}
+
+enum ItemEventType {
+  ITEM_EVENT_TYPE_UNSPECIFIED = 0;
+  ITEM_EVENT_TYPE_PICKUP = 1;
+  ITEM_EVENT_TYPE_DROP = 2;
+  ITEM_EVENT_TYPE_USE = 3;
+}
+
+message ProximityEvent {
+  // Type of proximity event
+  ProximityEventType event_type = 1;
+  // UUID of the entity that entered/left
+  string entity_uuid = 2;
+  // Entity type
+  string entity_type = 3;
+  // Distance from NPC
+  float distance = 4;
+}
+
+enum ProximityEventType {
+  PROXIMITY_EVENT_TYPE_UNSPECIFIED = 0;
+  PROXIMITY_EVENT_TYPE_ENTER = 1;
+  PROXIMITY_EVENT_TYPE_LEAVE = 2;
+}
+
+// =============================================================================
+// Action Types
+// =============================================================================
+
+message MoveAction {
+  // Target position to move to
+  Position target = 1;
+  // Movement speed (0.0-1.0, where 1.0 is sprint)
+  float speed = 2;
+  // Whether to pathfind or move directly
+  bool pathfind = 3;
+}
+
+message BreakBlockAction {
+  // Position of block to break
+  BlockPosition position = 1;
+}
+
+message PlaceBlockAction {
+  // Position to place block
+  BlockPosition position = 1;
+  // Block type to place
+  string block_type = 2;
+}
+
+message AttackAction {
+  // UUID of entity to attack
+  string target_uuid = 1;
+}
+
+message InteractAction {
+  // What to interact with
+  oneof target {
+    BlockPosition block = 1;
+    string entity_uuid = 2;
+  }
+  // Whether to use main hand (true) or off hand (false)
+  bool main_hand = 3;
+}
+
+message InventoryAction {
+  // Type of inventory action
+  InventoryActionType action_type = 1;
+  // Item type involved
+  string item_type = 2;
+  // Quantity
+  int32 quantity = 3;
+  // Slot number (if applicable)
+  int32 slot = 4;
+}
+
+enum InventoryActionType {
+  INVENTORY_ACTION_TYPE_UNSPECIFIED = 0;
+  INVENTORY_ACTION_TYPE_EQUIP = 1;
+  INVENTORY_ACTION_TYPE_DEPOSIT = 2;
+  INVENTORY_ACTION_TYPE_WITHDRAW = 3;
+  INVENTORY_ACTION_TYPE_DROP = 4;
+}
+
+message LookAction {
+  // Target to look at
+  oneof target {
+    Position position = 1;
+    string entity_uuid = 2;
+  }
+}
+
+message StopAction {
+  // Stop all current actions
+  bool cancel_pending = 1;
+}
+
+// =============================================================================
+// Action Result Types
+// =============================================================================
+
+message MoveResult {
+  // Final position after move
+  Position final_position = 1;
+  // Whether destination was reached
+  bool reached_destination = 2;
+}
+
+message BreakBlockResult {
+  // Items dropped from breaking
+  repeated ItemStack items_dropped = 1;
+}
+
+message PlaceBlockResult {
+  // Position where block was placed
+  BlockPosition placed_at = 1;
+}
+
+message AttackResult {
+  // Damage dealt (normalized)
+  float damage_dealt = 1;
+  // Whether target was killed
+  bool target_killed = 2;
+}
+
+message InteractResult {
+  // Description of interaction result
+  string result_description = 1;
+}
+
+message InventoryResult {
+  // Items affected
+  repeated ItemStack items = 1;
+}
+
+message ItemStack {
+  // Item type (e.g., "minecraft:diamond")
+  string item_type = 1;
+  // Quantity
+  int32 quantity = 2;
+}
+

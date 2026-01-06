@@ -1,0 +1,11 @@
+# Generated files
+gen/
+target/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+

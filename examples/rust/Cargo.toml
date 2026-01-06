@@ -1,0 +1,28 @@
+[package]
+name = "npc-society-protocol-example"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal example server for NPC Society protocol"
+
+[[bin]]
+name = "example-server"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# gRPC
+tonic = "0.10"
+prost = "0.12"
+
+# Generated code (will be available after running buf generate)
+# In production, you'd reference the generated crate properly
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+tonic-build = "0.10"
+

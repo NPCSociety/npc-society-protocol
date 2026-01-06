@@ -1,0 +1,13 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - DEFAULT
+  except:
+    # Allow shorter package names for cleaner generated code
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    - FILE
+
