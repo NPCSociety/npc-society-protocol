@@ -6,6 +6,9 @@
 //! - Audio correlation (SpeakDirective with matching AudioChunk stream)
 //! - Error case handling (success=false + error_message)
 
+#[cfg(test)]
+mod integration_test;
+
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -14,8 +17,7 @@ use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 use tracing::{info, warn, error, debug, Level};
 
-// Include the generated proto code
-// In production, this would come from the buf-generated crate
+// Include the generated proto code from build.rs
 pub mod npc_society {
     pub mod v1 {
         tonic::include_proto!("npc_society.v1");
@@ -25,10 +27,10 @@ pub mod npc_society {
 use npc_society::v1::{
     npc_society_service_server::{NpcSocietyService, NpcSocietyServiceServer},
     action_directive::Action,
+    action_result::Result as ActionResultType,
     ActionDirective, AudioChunk, ClientMessage, ServerMessage, SpeakDirective,
     client_message::Message as ClientMsg,
     server_message::Message as ServerMsg,
-    action_result::Result as ActionResultType,
     // Action types
     MoveAction, BreakBlockAction, ScanBlocksAction, DepositToChestAction,
     // Common types

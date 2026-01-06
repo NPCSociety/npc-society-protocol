@@ -15,8 +15,8 @@ repositories {
     mavenCentral()
 }
 
-val grpcVersion = "1.60.0"
-val protobufVersion = "3.25.1"
+val grpcVersion = "1.72.0"
+val protobufVersion = "4.33.2"
 
 dependencies {
     // gRPC
@@ -27,14 +27,19 @@ dependencies {
     // Protobuf
     implementation("com.google.protobuf:protobuf-java:$protobufVersion")
     
-    // Generated code (will be available after running buf generate)
-    implementation(files("../../gen/java"))
-    
     // Annotations for generated code
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
+}
+
+// Include generated sources
+sourceSets {
+    main {
+        java {
+            srcDir("../../gen/java")
+        }
+    }
 }
 
 application {
     mainClass.set("com.npcsociety.examples.ExampleClient")
 }
-

@@ -1,6 +1,6 @@
 package com.npcsociety.examples;
 
-import com.npcsociety.protocol.v1.*;
+import com.npcsociety.protocol.npc_society.v1.*;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
